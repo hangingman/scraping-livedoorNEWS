@@ -4,8 +4,10 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,25 +25,72 @@ func replace(t string) string {
 }
 
 func main() {
+	var (
+		visitedIds []int
+		dataCount  int
+		writer     csv.Writer
+		urlListSrc = flag.String("u", "", "取得するURLリストを指定する")
+	)
+
 	flag.Parse()
 	arg := flag.Arg(0)
 
-	file, err := os.OpenFile(arg, os.O_WRONLY|os.O_CREATE, 0600)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to open file: %v", err)
-		os.Exit(1)
-	}
-	defer file.Close()
+	// URLリストが指定されていれば読み込む
+	if *urlListSrc != "" {
+		urlListSrcAbs, _ := filepath.Abs(*urlListSrc)
+		contents, err := ioutil.ReadFile(urlListSrcAbs)
 
-	err = file.Truncate(0)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to clear file: %v", err)
-		os.Exit(1)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open file: %v\n", err)
+			os.Exit(1)
+		}
+
+		urls := strings.Split(string(contents), "\n")
+		if len(urls) <= 0 {
+			fmt.Fprintf(os.Stderr, "No url are in url list file\n")
+			os.Exit(1)
+		}
 	}
 
-	writer := csv.NewWriter(file)
-	writer.Write([]string{"id", "title", "body", "summary1", "summary2", "summary3"})
-	writer.Flush()
+	_, err := os.Stat(arg)
+
+	if err != nil {
+		// ファイルが無いので作成する
+		outputFile, err := os.OpenFile(arg, os.O_WRONLY|os.O_CREATE, 0600)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open file: %v", err)
+			os.Exit(1)
+		}
+		defer outputFile.Close()
+
+		writer := csv.NewWriter(outputFile)
+		writer.Write([]string{"id", "title", "body", "summary1", "summary2", "summary3"})
+		writer.Flush()
+	} else {
+		// 訪問ずみ記事のIDを取得する
+		visitedAbs, _ := filepath.Abs(arg)
+		contents, err := ioutil.ReadFile(visitedAbs)
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open file: %v\n", err)
+			os.Exit(1)
+		}
+
+		visited := strings.Split(string(contents), "\n")
+		for i := 1; i < len(visited); i++ {
+			id, _ := strconv.Atoi(strings.Split(visited[i], ",")[0])
+			visitedIds = append(visitedIds, id)
+		}
+		fmt.Fprintln(os.Stdout, fmt.Sprintf("訪問済id数: %d", len(visitedIds)))
+
+		outputFile, err := os.OpenFile(arg, os.O_WRONLY, 0600)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open file: %v", err)
+			os.Exit(1)
+		}
+
+		defer outputFile.Close()
+	}
 
 	driver := agouti.ChromeDriver(
 		agouti.ChromeOptions("args", []string{
@@ -81,9 +130,6 @@ func main() {
 
 	readerCurContents := strings.NewReader(curContentsDom)
 	contentsDom, _ := goquery.NewDocumentFromReader(readerCurContents)
-
-	var visitedIds []int
-	var dataCount int
 
 	for {
 		listDom := contentsDom.Find(".articleList").Children()
