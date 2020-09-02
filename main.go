@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/csv"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -41,19 +40,19 @@ func main() {
 	}
 
 	writer := csv.NewWriter(file)
-	writer.Write([]string{"", "title", "body", "summary1", "summary2", "summary3"})
+	writer.Write([]string{"id", "title", "body", "summary1", "summary2", "summary3"})
 	writer.Flush()
 
 	driver := agouti.ChromeDriver(
-        agouti.ChromeOptions("args", []string{
-            "--headless",
-            "--blink-settings=imagesEnabled=false", // don't load images
-            "--disable-gpu",                        // ref: https://developers.google.com/web/updates/2017/04/headless-chrome#cli
-            "no-sandbox",							// ref: https://github.com/theintern/intern/issues/878
-			"disable-dev-shm-usage",				// ref: https://qiita.com/yoshi10321/items/8b7e6ed2c2c15c3344c6
-        }),
-        agouti.Debug,
-    )
+		agouti.ChromeOptions("args", []string{
+			"--headless",
+			"--blink-settings=imagesEnabled=false", // don't load images
+			"--disable-gpu",                        // ref: https://developers.google.com/web/updates/2017/04/headless-chrome#cli
+			"no-sandbox",                           // ref: https://github.com/theintern/intern/issues/878
+			"disable-dev-shm-usage",                // ref: https://qiita.com/yoshi10321/items/8b7e6ed2c2c15c3344c6
+		}),
+		agouti.Debug,
+	)
 
 	err = driver.Start()
 	if err != nil {
@@ -98,21 +97,21 @@ func main() {
 			// 記事のhref取得
 			href, err := page.Find(aSelector).Attribute("href")
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("[error] 記事のhref取得 %v", err))
 				continue
 			}
 
 			// hrefから記事idを取得
 			id, err := strconv.Atoi(path.Base(href))
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("[error] hrefから記事idを取得 %v", err))
 				continue
 			}
 
 			// すでに取得済みのidであれば処理を飛ばす
 			for _, v := range visitedIds {
 				if id == v {
-					fmt.Println("訪問済です")
+					fmt.Fprintln(os.Stdout, fmt.Sprintf("訪問済です, 記事id: %s", id))
 					continue L
 				}
 			}
@@ -122,7 +121,7 @@ func main() {
 
 			// 記事のタイトルと要約へ
 			if err = page.Find(aSelector).Click(); err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("[error] 記事のタイトルと要約へ %v", err))
 				continue
 			}
 			time.Sleep(sleepTime * time.Second)
@@ -130,7 +129,7 @@ func main() {
 			// タイトル取得
 			articleTitle, err := page.Find(".topicsTtl > a").Text()
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("[error] 記事のタイトル取得 %v", err))
 				page.Back()
 				time.Sleep(sleepTime * time.Second)
 				continue
@@ -139,16 +138,7 @@ func main() {
 			// 要約取得
 			summary, err := page.FindByClass("summaryList").Text()
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				page.Back()
-				time.Sleep(sleepTime * time.Second)
-				continue
-			}
-
-			// 要約が3文かどうかチェック
-			summaryList := strings.Split(summary, "\n")
-			if len(summaryList) != 3 {
-				fmt.Fprintln(os.Stderr, errors.New("there are less than 3 summaries"))
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("[error] 記事の要約取得 %v", err))
 				page.Back()
 				time.Sleep(sleepTime * time.Second)
 				continue
@@ -156,6 +146,7 @@ func main() {
 
 			// 記事の本文へ
 			if err = page.Find(".articleMore > a").Click(); err != nil {
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("[error] 記事の本文へ %v", err))
 				page.Back()
 				time.Sleep(sleepTime * time.Second)
 				continue
@@ -164,7 +155,7 @@ func main() {
 			// 記事の本文取得
 			articleBody, err := page.Find(".articleBody > span").Text()
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("[error] 記事の本文取得 %v", err))
 				page.Back()
 				time.Sleep(sleepTime * time.Second)
 				page.Back()
@@ -173,7 +164,9 @@ func main() {
 			}
 
 			// csvに書き込み
+			summaryList := strings.Split(summary, "\n")
 			writer.Write([]string{
+				strconv.Itoa(id),
 				replace(articleTitle),
 				replace(articleBody),
 				replace(summaryList[0]),
