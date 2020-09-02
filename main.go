@@ -44,7 +44,16 @@ func main() {
 	writer.Write([]string{"", "title", "body", "summary1", "summary2", "summary3"})
 	writer.Flush()
 
-	driver := agouti.ChromeDriver()
+	driver := agouti.ChromeDriver(
+        agouti.ChromeOptions("args", []string{
+            "--headless",
+            "--blink-settings=imagesEnabled=false", // don't load images
+            "--disable-gpu",                        // ref: https://developers.google.com/web/updates/2017/04/headless-chrome#cli
+            "no-sandbox",							// ref: https://github.com/theintern/intern/issues/878
+			"disable-dev-shm-usage",				// ref: https://qiita.com/yoshi10321/items/8b7e6ed2c2c15c3344c6
+        }),
+        agouti.Debug,
+    )
 
 	err = driver.Start()
 	if err != nil {
